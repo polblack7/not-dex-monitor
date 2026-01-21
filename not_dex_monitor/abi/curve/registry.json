@@ -1,0 +1,42 @@
+[
+  {
+    "inputs": [
+      {"internalType": "address", "name": "from", "type": "address"},
+      {"internalType": "address", "name": "to", "type": "address"}
+    ],
+    "name": "find_pool_for_coins",
+    "outputs": [
+      {"internalType": "address", "name": "pool", "type": "address"}
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "from", "type": "address"},
+      {"internalType": "address", "name": "to", "type": "address"},
+      {"internalType": "uint256", "name": "index", "type": "uint256"}
+    ],
+    "name": "find_pool_for_coins",
+    "outputs": [
+      {"internalType": "address", "name": "pool", "type": "address"}
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "pool", "type": "address"},
+      {"internalType": "address", "name": "from", "type": "address"},
+      {"internalType": "address", "name": "to", "type": "address"}
+    ],
+    "name": "get_coin_indices",
+    "outputs": [
+      {"internalType": "int128", "name": "i", "type": "int128"},
+      {"internalType": "int128", "name": "j", "type": "int128"},
+      {"internalType": "bool", "name": "isUnderlying", "type": "bool"}
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

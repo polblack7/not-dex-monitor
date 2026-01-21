@@ -1,0 +1,22 @@
+{
+  "min_profit_pct": 0.3,
+  "loan_limit": 3.0,
+  "dex_list": [
+    "Uniswap V2",
+    "SushiSwap",
+    "ShibaSwap",
+    "Uniswap V3",
+    "Curve",
+    "Balancer V2",
+    "0x",
+    "1inch",
+    "KyberSwap Elastic",
+    "DODO V2"
+  ],
+  "pairs": [
+    "WETH/USDC",
+    "WETH/USDT",
+    "WBTC/WETH"
+  ],
+  "scan_frequency_sec": 10
+}

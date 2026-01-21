@@ -1,0 +1,17 @@
+[
+  {
+    "inputs": [
+      {"internalType": "address", "name": "srcToken", "type": "address"},
+      {"internalType": "address", "name": "dstToken", "type": "address"},
+      {"internalType": "uint256", "name": "amount", "type": "uint256"},
+      {"internalType": "uint256", "name": "flags", "type": "uint256"}
+    ],
+    "name": "getRate",
+    "outputs": [
+      {"internalType": "uint256", "name": "returnAmount", "type": "uint256"},
+      {"internalType": "uint256", "name": "gasEstimate", "type": "uint256"}
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]
