@@ -138,6 +138,8 @@ class WalletWorker:
         opportunities: List[Opportunity] = []
 
         for pair_str in settings.pairs:
+            if self._stop_event.is_set():
+                break
             try:
                 pair = parse_pair(pair_str)
             except ValueError as exc:
@@ -150,6 +152,8 @@ class WalletWorker:
 
             quotes: List[PriceQuote] = []
             for dex_name in settings.dex_list:
+                if self._stop_event.is_set():
+                    break
                 canonical = canonical_dex_name(dex_name)
                 key = normalize_dex_name(canonical)
                 quoter = self.dex_quoters.get(key)
