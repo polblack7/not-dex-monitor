@@ -10,6 +10,7 @@ from web3 import Web3
 from .backend_client import AuthError, BackendClient, BackendError
 from .config import Config
 from .dex import canonical_dex_name, create_quoters, normalize_dex_name
+from .executor import execute_arb
 from .models import Opportunity, PriceQuote, Settings, compute_expected_profit_pct
 from .quote_math import price_from_amounts, to_wei
 from .tokens import Token, default_base_amount, get_token, parse_pair
@@ -354,6 +355,11 @@ class WalletWorker:
             },
         )
 
+        # Try auto-execution if user has stored a wallet key
+        executed = await self._try_execute(opp, exec_time_ms)
+        if executed:
+            return
+
         if self.config.emit_ops_on_opportunity:
             await self.backend.post_event(
                 self.wallet_address,
@@ -369,6 +375,58 @@ class WalletWorker:
                     "error_message": "EXECUTION_NOT_IMPLEMENTED",
                 },
             )
+
+    async def _try_execute(self, opp: Opportunity, scan_time_ms: int) -> bool:
+        """Attempt to auto-execute the arb. Returns True if execution was attempted."""
+        if not self.config.wallet_encryption_key:
+            return False
+
+        try:
+            encrypted_key = await self.backend.get_wallet_key(self.wallet_address)
+        except Exception as exc:  # noqa: BLE001
+            await self._log("warning", "Failed to fetch wallet key", {"error": str(exc)})
+            return False
+
+        if not encrypted_key:
+            return False
+
+        settings = self._settings or Settings()
+        await self._log("info", f"Auto-executing arb: {opp.pair} {opp.buy_dex}->{opp.sell_dex}", {})
+
+        result = await execute_arb(
+            self.w3,
+            encrypted_key,
+            self.config.wallet_encryption_key,
+            self.wallet_address,
+            opp,
+            settings,
+        )
+
+        await self.backend.post_event(
+            self.wallet_address,
+            "op",
+            {
+                "timestamp": utcnow_iso(),
+                "pair": opp.pair,
+                "dex": f"{opp.buy_dex}->{opp.sell_dex}",
+                "profit": result.profit,
+                "fees": result.fees,
+                "exec_time_ms": result.exec_time_ms,
+                "status": "success" if result.success else "fail",
+                "error_message": result.error,
+            },
+        )
+
+        if result.success:
+            await self._log("info", f"Arb executed: profit {result.profit}", {
+                "tx_hash": result.tx_hash, "pair": opp.pair,
+            })
+        else:
+            await self._log("warning", f"Arb execution failed: {result.error}", {
+                "pair": opp.pair, "tx_hash": result.tx_hash,
+            })
+
+        return True
 
     async def _send_status(self, status: str, last_error: Optional[str]) -> None:
         if self._dry_run:

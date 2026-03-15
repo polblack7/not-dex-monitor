@@ -146,3 +146,13 @@ class BackendClient:
             headers={"X-Internal-Key": self.internal_api_key},
             payload={"wallet_address": wallet_address, "type": event_type, "payload": payload},
         )
+
+    async def get_wallet_key(self, wallet_address: str) -> Optional[str]:
+        data = await self._request_json(
+            "GET",
+            f"/internal/wallet-key/{wallet_address}",
+            headers={"X-Internal-Key": self.internal_api_key},
+        )
+        if isinstance(data, dict):
+            return data.get("encrypted_private_key")
+        return None
