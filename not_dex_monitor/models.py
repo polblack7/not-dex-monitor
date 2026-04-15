@@ -14,6 +14,9 @@ class Settings(BaseModel):
     pairs: List[str] = Field(default_factory=list)
     scan_frequency_sec: int = Field(default=15)
     updated_at: Optional[str] = None
+    # Flash-loan contract configuration (optional; falls back to direct-swap flow if empty)
+    flash_loan_contract: str = Field(default="")
+    flash_loan_contract_abi_path: str = Field(default="")
 
 
 @dataclass(frozen=True)
@@ -34,6 +37,8 @@ class Opportunity:
     gas_price_gwei: float
     route: List[str]
     fees_quote: float
+    # Optional flash-loan executor fields; 0 means derive from settings.loan_limit
+    amount_in_wei: int = 0
 
 
 def compute_expected_profit_pct(

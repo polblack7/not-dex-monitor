@@ -109,6 +109,38 @@ MAINNET_ADDRESSES = DexAddresses(
 )
 
 
+# ---------------------------------------------------------------------------
+# Flash-loan executor router lookup table
+# ---------------------------------------------------------------------------
+# Keys match the canonical DEX names returned by canonical_dex_name() in
+# dex/__init__.py (lowercase, spaces preserved).
+# dex_type: 0 = Uniswap V2-compatible, 1 = Uniswap V3-compatible
+# fee: Uniswap V3 pool fee tier in bps (ignored for V2, set to 0)
+
+DEX_ROUTER_CONFIG: Dict[str, dict] = {
+    "uniswap v2": {
+        "router": MAINNET_ADDRESSES.uniswap_v2.router,
+        "dex_type": 0,
+        "fee": 0,
+    },
+    "sushiswap": {
+        "router": MAINNET_ADDRESSES.sushiswap.router,
+        "dex_type": 0,
+        "fee": 0,
+    },
+    "shibaswap": {
+        "router": MAINNET_ADDRESSES.shibaswap.router,
+        "dex_type": 0,
+        "fee": 0,
+    },
+    "uniswap v3": {
+        "router": MAINNET_ADDRESSES.uniswap_v3.swap_router,
+        "dex_type": 1,
+        "fee": 3000,  # default 0.3% tier; per-pair fees can override in future
+    },
+}
+
+
 BALANCER_POOL_ADDRESSES: Dict[Tuple[str, str], List[str]] = {
     ("WETH", "USDC"): [
         "0x96646936b91d6b9d7d0c47c496afbf3d6ec7b6b2",
