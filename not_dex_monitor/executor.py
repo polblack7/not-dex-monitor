@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from dataclasses import dataclass
 from decimal import Decimal
@@ -132,10 +133,18 @@ def _get_router_address(dex_name: str) -> Optional[str]:
 def _default_flashloan_abi_path() -> Optional[Path]:
     """Return the best-guess path to the compiled FlashLoan artifact, or None.
 
-    Walk up from this file looking for a sibling ``not-bot/`` directory so the
-    function works both locally (repo root 3-4 levels up) and in Docker (where
-    the monitor may be the only thing copied into the image).
+    Resolution order:
+    1. ``FLASH_LOAN_ABI_PATH`` env var (used by the Docker monitor container
+       which mounts ``not-bot/artifacts`` at a fixed location).
+    2. Walk up from this file looking for a sibling ``not-bot/`` directory
+       so the function still works for local development.
     """
+    env_path = os.getenv("FLASH_LOAN_ABI_PATH", "").strip()
+    if env_path:
+        candidate = Path(env_path)
+        if candidate.exists():
+            return candidate
+
     here = Path(__file__).resolve()
     for parent in here.parents:
         candidate = parent / "not-bot" / "artifacts" / "contracts" / "FlashLoan.sol" / "FlashLoan.json"
