@@ -272,10 +272,12 @@ class WalletWorker:
         self, pair, amount_in: int, dex_list: List[str]
     ) -> List[PriceQuote]:
         """Quote base→quote on every DEX, using supports_pair to skip unsupported ones."""
-        quotes: List[PriceQuote] = []
+        if self._stop_event.is_set():
+            return []
+
+        # Filter to supported quoters first (all sync, no network).
+        valid_quoters = []
         for dex_name in dex_list:
-            if self._stop_event.is_set():
-                break
             canonical = canonical_dex_name(dex_name)
             key = normalize_dex_name(canonical)
             quoter = self.dex_quoters.get(key)
@@ -285,7 +287,6 @@ class WalletWorker:
                     f"Unsupported DEX: {dex_name}", {"dex": dex_name},
                 )
                 continue
-
             try:
                 supports = quoter.supports_pair(pair)
             except Exception as exc:  # noqa: BLE001
@@ -295,7 +296,6 @@ class WalletWorker:
                     {"dex": quoter.name, "pair": pair.raw, "error": str(exc)},
                 )
                 continue
-
             if not supports:
                 await self._log_once(
                     f"dex_pair_unsupported_{key}_{pair.raw}", "info",
@@ -303,7 +303,12 @@ class WalletWorker:
                     {"dex": quoter.name, "pair": pair.raw},
                 )
                 continue
+            valid_quoters.append(quoter)
 
+        async def _fetch(quoter) -> Optional[PriceQuote]:
+            if self._stop_event.is_set():
+                return None
+            key = normalize_dex_name(quoter.name)
             result = await quoter.quote_exact_in_async(pair.base, pair.quote, amount_in)
             if not result.ok or not result.amount_out_wei:
                 await self._log_once(
@@ -311,16 +316,17 @@ class WalletWorker:
                     f"{quoter.name} forward quote failed",
                     {"dex": quoter.name, "pair": pair.raw, "error": result.error},
                 )
-                continue
-
+                return None
             price = price_from_amounts(
                 amount_in, result.amount_out_wei, pair.base.decimals, pair.quote.decimals,
             )
-            quotes.append(PriceQuote(
+            return PriceQuote(
                 dex=quoter.name, amount_in=amount_in,
                 amount_out=result.amount_out_wei, price=price,
-            ))
-        return quotes
+            )
+
+        results = await asyncio.gather(*(_fetch(q) for q in valid_quoters), return_exceptions=True)
+        return [r for r in results if isinstance(r, PriceQuote)]
 
     async def _collect_reverse_quotes(
         self, pair, amount_in_quote: int, dex_list: List[str]
@@ -331,27 +337,32 @@ class WalletWorker:
         quoters handle the reverse direction for the same pool without needing a
         separate check.
         """
-        quotes: List[PriceQuote] = []
-        for dex_name in dex_list:
-            if self._stop_event.is_set():
-                break
-            key = normalize_dex_name(canonical_dex_name(dex_name))
-            quoter = self.dex_quoters.get(key)
-            if not quoter:
-                continue
+        if self._stop_event.is_set():
+            return []
 
+        quoters = [
+            self.dex_quoters.get(normalize_dex_name(canonical_dex_name(dex_name)))
+            for dex_name in dex_list
+        ]
+
+        async def _fetch(quoter) -> Optional[PriceQuote]:
+            if self._stop_event.is_set():
+                return None
             result = await quoter.quote_exact_in_async(pair.quote, pair.base, amount_in_quote)
             if not result.ok or not result.amount_out_wei:
-                continue
-
+                return None
             price = price_from_amounts(
                 amount_in_quote, result.amount_out_wei, pair.quote.decimals, pair.base.decimals,
             )
-            quotes.append(PriceQuote(
+            return PriceQuote(
                 dex=quoter.name, amount_in=amount_in_quote,
                 amount_out=result.amount_out_wei, price=price,
-            ))
-        return quotes
+            )
+
+        results = await asyncio.gather(
+            *(_fetch(q) for q in quoters if q), return_exceptions=True
+        )
+        return [r for r in results if isinstance(r, PriceQuote)]
 
     async def scan_once(self, settings: Settings) -> List[Opportunity]:
         return await self._scan(settings, time.monotonic())
