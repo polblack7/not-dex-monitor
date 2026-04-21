@@ -115,7 +115,7 @@ _ERC20_APPROVE_ABI = [
 
 # Legacy V2-router map (used by the fallback path only)
 _V2_ROUTERS = {
-    "uniswap_v2": MAINNET_ADDRESSES.uniswap_v2.router,
+    "uniswap v2": MAINNET_ADDRESSES.uniswap_v2.router,
     "sushiswap":  MAINNET_ADDRESSES.sushiswap.router,
     "shibaswap":  MAINNET_ADDRESSES.shibaswap.router,
 }

@@ -39,6 +39,7 @@ class ZeroExAddresses:
 @dataclass(frozen=True)
 class OneInchAddresses:
     aggregation_router_v5: str
+    offchain_oracle: str
 
 
 @dataclass(frozen=True)
@@ -87,7 +88,7 @@ MAINNET_ADDRESSES = DexAddresses(
     ),
     curve=CurveAddresses(
         address_provider="0x0000000022D53366457F9d5E68Ec105046FC4383",
-        registry="0x0000000022D53366457F9d5E68Ec105046FC4383",
+        registry="0x90E00ACe148ca3b23Ac1bC8C240C2a7Dd9c2d7f6",
     ),
     balancer_v2=BalancerV2Addresses(
         vault="0xBA12222222228d8Ba445958a75a0704d566BF2C8",
@@ -97,11 +98,12 @@ MAINNET_ADDRESSES = DexAddresses(
     ),
     oneinch=OneInchAddresses(
         aggregation_router_v5="0x1111111254EEB25477B68fb85Ed929f73A960582",
+        offchain_oracle="0x07D91f5fb9Bf7798734C3f606dB065549F6893bb",
     ),
     kyberswap_elastic=KyberSwapElasticAddresses(
         quoter="0x9AAb3f75489902f3a48495025729a0AF77d4b11e",
         router="0x1c87257f5e8609940bc751a07bb085bb7f8cdbe6",
-        factory="0x5F1dddbf348a04b9f3d4C89d9B4E8B6ae0bD9F3B",
+        factory="0xC7a590291e07B9fe9E64b86c58fD8fC764308C4E",
     ),
     dodo_v2=DodoV2Addresses(
         proxy="0xa356867fDCEa8e71AEaF87805808803806231FdC",

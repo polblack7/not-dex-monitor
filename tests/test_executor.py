@@ -71,7 +71,7 @@ def _make_opp(**kwargs) -> Opportunity:
         liquidity_score=1.0,
         gas_price_gwei=30.0,
         route=["WETH", "USDC"],
-        fees_quote=0.0,
+        fees_base=0.0,
         amount_in_wei=int(1e18),
     )
     defaults.update(kwargs)

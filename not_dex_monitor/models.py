@@ -36,7 +36,7 @@ class Opportunity:
     liquidity_score: float
     gas_price_gwei: float
     route: List[str]
-    fees_quote: float
+    fees_base: float  # gas fees denominated in the base token
     # Optional flash-loan executor fields; 0 means derive from settings.loan_limit
     amount_in_wei: int = 0
 
