@@ -361,4 +361,4 @@ class TestExecuteArbLegacyFallback:
 
         assert result.success is False
         assert result.tx_hash is None
-        assert "only V2-compatible routers" in (result.error or "")
+        assert "no router config" in (result.error or "")

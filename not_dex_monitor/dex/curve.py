@@ -24,6 +24,7 @@ class CurveAdapter(BaseDexAdapter):
             abi=load_abi("curve", "registry"),
         )
         self.pool_abi = load_abi("curve", "pool")
+        self.crypto_pool_abi = load_abi("curve", "crypto_pool")
 
     def _supports_pair(self, pair: TokenPair) -> bool:
         pool_address = self._find_pool(pair.base.address, pair.quote.address)
@@ -46,6 +47,10 @@ class CurveAdapter(BaseDexAdapter):
             address=self.w3.to_checksum_address(pool_address),
             abi=self.pool_abi,
         )
+        crypto_pool = self.w3.eth.contract(
+            address=self.w3.to_checksum_address(pool_address),
+            abi=self.crypto_pool_abi,
+        )
 
         amount_out = None
         if bool(is_underlying):
@@ -54,7 +59,13 @@ class CurveAdapter(BaseDexAdapter):
             except Exception:  # noqa: BLE001
                 amount_out = None
         if amount_out is None:
-            amount_out = pool.functions.get_dy(int(i), int(j), amount_in_wei).call()
+            try:
+                amount_out = pool.functions.get_dy(int(i), int(j), amount_in_wei).call()
+            except Exception:  # noqa: BLE001
+                amount_out = None
+        if amount_out is None:
+            # CryptoSwap V2 pools use uint256 indices instead of int128
+            amount_out = crypto_pool.functions.get_dy(int(i), int(j), amount_in_wei).call()
 
         return QuoteResult(
             amount_out_wei=int(amount_out),
@@ -71,22 +82,28 @@ class CurveAdapter(BaseDexAdapter):
         )
 
     def _refresh_registry(self):
-        try:
-            registry = self.address_provider.functions.get_registry().call()
-        except Exception:  # noqa: BLE001
-            registry = None
-        if not registry or registry == ZERO_ADDRESS:
+        # Prefer MetaRegistry (id=7) — it aggregates all Curve pools including newer ones.
+        # Fall back to the old Main Registry (id=0 / get_registry()) for legacy pools.
+        registry = None
+        for getter in (
+            lambda: self.address_provider.functions.get_address(7).call(),
+            lambda: self.address_provider.functions.get_address(0).call(),
+            lambda: self.address_provider.functions.get_registry().call(),
+        ):
             try:
-                registry = self.address_provider.functions.get_address(0).call()
+                addr = getter()
+                if addr and addr != ZERO_ADDRESS:
+                    registry = addr
+                    break
             except Exception:  # noqa: BLE001
-                registry = None
-        if registry and registry != ZERO_ADDRESS:
-            if registry.lower() != self.registry_address.lower():
-                self.registry_address = registry
-                self.registry = self.w3.eth.contract(
-                    address=self.w3.to_checksum_address(registry),
-                    abi=load_abi("curve", "registry"),
-                )
+                continue
+
+        if registry and registry.lower() != self.registry_address.lower():
+            self.registry_address = registry
+            self.registry = self.w3.eth.contract(
+                address=self.w3.to_checksum_address(registry),
+                abi=load_abi("curve", "registry"),
+            )
         return self.registry
 
     def _find_pool(self, token_in: str, token_out: str) -> Optional[str]:

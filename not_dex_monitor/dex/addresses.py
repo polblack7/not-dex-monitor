@@ -32,6 +32,13 @@ class BalancerV2Addresses:
 
 
 @dataclass(frozen=True)
+class BalancerV3Addresses:
+    vault: str
+    router: str
+    batch_router: str
+
+
+@dataclass(frozen=True)
 class ZeroExAddresses:
     exchange_proxy: str
 
@@ -62,6 +69,7 @@ class DexAddresses:
     uniswap_v3: UniswapV3Addresses
     curve: CurveAddresses
     balancer_v2: BalancerV2Addresses
+    balancer_v3: BalancerV3Addresses
     zeroex: ZeroExAddresses
     oneinch: OneInchAddresses
     kyberswap_elastic: KyberSwapElasticAddresses
@@ -92,6 +100,11 @@ MAINNET_ADDRESSES = DexAddresses(
     ),
     balancer_v2=BalancerV2Addresses(
         vault="0xBA12222222228d8Ba445958a75a0704d566BF2C8",
+    ),
+    balancer_v3=BalancerV3Addresses(
+        vault="0xbA1333333333a1BA1108E8412f11850A5C319bA9",
+        router="0xAE563E3f8219521950555F5962419C8919758Ea2",
+        batch_router="0x136f1EFcC3f8f88516B9E94110D56FDBfB1778d1",
     ),
     zeroex=ZeroExAddresses(
         exchange_proxy="0xdef1c0ded9bec7f1a1670819833240f027b25eff",
@@ -145,15 +158,20 @@ DEX_ROUTER_CONFIG: Dict[str, dict] = {
 
 BALANCER_POOL_ADDRESSES: Dict[Tuple[str, str], List[str]] = {
     ("WETH", "USDC"): [
-        "0x96646936b91d6b9d7d0c47c496afbf3d6ec7b6b2",
+        "0x96646936b91d6b9d7d0c47c496afbf3d6ec7b6f8",
     ],
     ("WETH", "USDT"): [
-        "0x8fd1626a36d3f1c9bb0c1443b879a5d2b12f8575",
+        "0x3e5fa9518ea95c3e533eb377c001702a9aacaa32",
     ],
     ("WBTC", "WETH"): [
         "0xa6f548df93de924d73be7d25dc02554c6bd66db5",
     ],
 }
+
+
+# Balancer V3 pool addresses (pool contract address, not pool ID).
+# V3 launched Dec 2024; add new pools here as liquidity grows.
+BALANCER_V3_POOL_ADDRESSES: Dict[Tuple[str, str], List[str]] = {}
 
 
 DODO_V2_POOL_ADDRESSES: Dict[Tuple[str, str], List[str]] = {

@@ -5,6 +5,7 @@ from typing import Dict
 from web3 import Web3
 
 from .balancer_v2 import BalancerV2Adapter
+from .balancer_v3 import BalancerV3Adapter
 from .base import BaseDexAdapter
 from .curve import CurveAdapter
 from .dodo_v2 import DodoV2Adapter
@@ -32,6 +33,8 @@ _DEX_ALIASES = {
     "curve": "curve",
     "balancer": "balancer v2",
     "balancer v2": "balancer v2",
+    "balancer v3": "balancer v3",
+    "balancerv3": "balancer v3",
     "0x": "0x",
     "zeroex": "0x",
     "1inch": "1inch",
@@ -56,6 +59,7 @@ def create_quoters(w3: Web3) -> Dict[str, BaseDexAdapter]:
         "uniswap v3": UniswapV3Adapter(w3),
         "curve": CurveAdapter(w3),
         "balancer v2": BalancerV2Adapter(w3),
+        "balancer v3": BalancerV3Adapter(w3),
         "0x": ZeroExAdapter(w3),
         "1inch": OneInchAdapter(w3),
         "kyberswap elastic": KyberSwapElasticAdapter(w3),

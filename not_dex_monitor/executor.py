@@ -83,6 +83,32 @@ _SWAP_ABI = [
     }
 ]
 
+_V3_SWAP_ABI = [
+    {
+        "inputs": [
+            {
+                "components": [
+                    {"internalType": "address", "name": "tokenIn", "type": "address"},
+                    {"internalType": "address", "name": "tokenOut", "type": "address"},
+                    {"internalType": "uint24", "name": "fee", "type": "uint24"},
+                    {"internalType": "address", "name": "recipient", "type": "address"},
+                    {"internalType": "uint256", "name": "deadline", "type": "uint256"},
+                    {"internalType": "uint256", "name": "amountIn", "type": "uint256"},
+                    {"internalType": "uint256", "name": "amountOutMinimum", "type": "uint256"},
+                    {"internalType": "uint160", "name": "sqrtPriceLimitX96", "type": "uint160"},
+                ],
+                "internalType": "struct ISwapRouter.ExactInputSingleParams",
+                "name": "params",
+                "type": "tuple",
+            }
+        ],
+        "name": "exactInputSingle",
+        "outputs": [{"internalType": "uint256", "name": "amountOut", "type": "uint256"}],
+        "stateMutability": "payable",
+        "type": "function",
+    }
+]
+
 _ERC20_APPROVE_ABI = [
     {
         "inputs": [
@@ -391,15 +417,15 @@ async def _execute_legacy(
     settings: Settings,
     start: float,
 ) -> TxResult:
-    buy_router_addr  = _get_router_address(opp.buy_dex)
-    sell_router_addr = _get_router_address(opp.sell_dex)
-    if not buy_router_addr or not sell_router_addr:
+    buy_cfg  = _get_router_config(opp.buy_dex)
+    sell_cfg = _get_router_config(opp.sell_dex)
+    if not buy_cfg or not sell_cfg:
         return TxResult(
             success=False,
             tx_hash=None,
             profit=0.0,
             fees=0.0,
-            error=f"Execution not supported for {opp.buy_dex}->{opp.sell_dex} (only V2-compatible routers)",
+            error=f"Execution not supported for {opp.buy_dex}->{opp.sell_dex} (no router config)",
             exec_time_ms=int((time.monotonic() - start) * 1000),
         )
 
@@ -432,7 +458,7 @@ async def _execute_legacy(
         result = await _execute_swap_pair(
             w3, private_key, sender, amount_in,
             pair.base, pair.quote,
-            buy_router_addr, sell_router_addr,
+            buy_cfg, sell_cfg,
         )
     finally:
         del private_key
@@ -455,8 +481,8 @@ async def _execute_swap_pair(
     amount_in: int,
     base_token: Token,
     quote_token: Token,
-    buy_router_addr: str,
-    sell_router_addr: str,
+    buy_cfg: dict,
+    sell_cfg: dict,
 ) -> dict:
     """Execute buy (base→quote) on buy_router then sell (quote→base) on sell_router."""
     chain_id  = await asyncio.to_thread(lambda: w3.eth.chain_id)
@@ -474,10 +500,10 @@ async def _execute_swap_pair(
             "error": f"Insufficient {base_token.symbol} balance: have {balance}, need {amount_in}",
         }
 
-    buy_router  = w3.eth.contract(address=w3.to_checksum_address(buy_router_addr), abi=_SWAP_ABI)
     total_gas_used = 0
     nonce = await asyncio.to_thread(lambda: w3.eth.get_transaction_count(sender))
 
+    buy_router_addr = buy_cfg["router"]
     nonce, gas_used = await _ensure_allowance(
         w3, private_key, sender, base_addr, buy_router_addr,
         amount_in, nonce, chain_id, gas_price,
@@ -485,9 +511,9 @@ async def _execute_swap_pair(
     total_gas_used += gas_used
 
     deadline = await asyncio.to_thread(lambda: w3.eth.get_block("latest")["timestamp"] + 300)
-    buy_tx = buy_router.functions.swapExactTokensForTokens(
-        amount_in, 0, [base_addr, quote_addr], sender, deadline
-    ).build_transaction({"from": sender, "gas": 300_000, "gasPrice": gas_price, "nonce": nonce, "chainId": chain_id})
+    buy_tx = _build_swap_tx(
+        w3, buy_cfg, base_addr, quote_addr, amount_in, sender, deadline, gas_price, nonce, chain_id,
+    )
     buy_receipt = await _sign_and_send(w3, private_key, buy_tx)
     if buy_receipt["status"] != 1:
         return {"success": False, "error": "Buy swap reverted", "tx_hash": buy_receipt["transactionHash"].hex()}
@@ -497,17 +523,17 @@ async def _execute_swap_pair(
     quote_contract = w3.eth.contract(address=quote_addr, abi=_ERC20_APPROVE_ABI)
     quote_balance  = await asyncio.to_thread(quote_contract.functions.balanceOf(sender).call)
 
+    sell_router_addr = sell_cfg["router"]
     nonce, gas_used = await _ensure_allowance(
         w3, private_key, sender, quote_addr, sell_router_addr,
         quote_balance, nonce, chain_id, gas_price,
     )
     total_gas_used += gas_used
 
-    sell_router = w3.eth.contract(address=w3.to_checksum_address(sell_router_addr), abi=_SWAP_ABI)
-    deadline    = await asyncio.to_thread(lambda: w3.eth.get_block("latest")["timestamp"] + 300)
-    sell_tx = sell_router.functions.swapExactTokensForTokens(
-        quote_balance, 0, [quote_addr, base_addr], sender, deadline
-    ).build_transaction({"from": sender, "gas": 300_000, "gasPrice": gas_price, "nonce": nonce, "chainId": chain_id})
+    deadline = await asyncio.to_thread(lambda: w3.eth.get_block("latest")["timestamp"] + 300)
+    sell_tx = _build_swap_tx(
+        w3, sell_cfg, quote_addr, base_addr, quote_balance, sender, deadline, gas_price, nonce, chain_id,
+    )
     sell_receipt = await _sign_and_send(w3, private_key, sell_tx)
     total_gas_used += sell_receipt["gasUsed"]
 
@@ -520,6 +546,32 @@ async def _execute_swap_pair(
     fees   = float(Decimal(total_gas_used * gas_price) / Decimal(10 ** 18))
 
     return {"success": True, "profit": profit, "fees": fees, "tx_hash": sell_receipt["transactionHash"].hex()}
+
+
+def _build_swap_tx(
+    w3: Web3,
+    cfg: dict,
+    token_in: str,
+    token_out: str,
+    amount_in: int,
+    recipient: str,
+    deadline: int,
+    gas_price: int,
+    nonce: int,
+    chain_id: int,
+) -> dict:
+    router_addr = w3.to_checksum_address(cfg["router"])
+    tx_overrides = {"from": recipient, "gas": 300_000, "gasPrice": gas_price, "nonce": nonce, "chainId": chain_id}
+
+    if cfg["dex_type"] == 0:
+        router = w3.eth.contract(address=router_addr, abi=_SWAP_ABI)
+        return router.functions.swapExactTokensForTokens(
+            amount_in, 0, [token_in, token_out], recipient, deadline
+        ).build_transaction(tx_overrides)
+    else:
+        router = w3.eth.contract(address=router_addr, abi=_V3_SWAP_ABI)
+        params = (token_in, token_out, cfg["fee"], recipient, deadline, amount_in, 0, 0)
+        return router.functions.exactInputSingle(params).build_transaction(tx_overrides)
 
 
 async def _ensure_allowance(
