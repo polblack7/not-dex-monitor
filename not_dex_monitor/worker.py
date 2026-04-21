@@ -75,11 +75,7 @@ class WalletWorker:
             settings: Optional[Settings] = None
             try:
                 settings = await self._get_settings()
-                opportunities = await self._scan(settings)
-                scan_time_ms = int((time.monotonic() - start_time) * 1000)
-                for opp in opportunities:
-                    await self._emit_opportunity(opp, scan_time_ms)
-
+                await self._scan(settings, start_time)
                 await self._maybe_heartbeat(settings)
             except AuthError:
                 self._jwt = None
@@ -136,9 +132,12 @@ class WalletWorker:
         self._jwt = token
         self._jwt_expires_at = time.monotonic() + self.config.jwt_cache_ttl_sec
 
-    async def _scan(self, settings: Settings) -> List[Opportunity]:
+    async def _scan(self, settings: Settings, scan_start: float = 0.0) -> List[Opportunity]:
         if not settings.dex_list or not settings.pairs:
             return []
+
+        if scan_start == 0.0:
+            scan_start = time.monotonic()
 
         try:
             gas_price_wei = await asyncio.to_thread(lambda: int(self.w3.eth.gas_price))
@@ -248,6 +247,10 @@ class WalletWorker:
                     pair_opps.append(opp)
                     opportunities.append(opp)
 
+                    # Emit to frontend and attempt execution immediately on discovery.
+                    elapsed_ms = int((time.monotonic() - scan_start) * 1000)
+                    await self._emit_opportunity(opp, elapsed_ms)
+
             print(f"\n  {_DIV}")
             if pair_opps:
                 n = len(pair_opps)
@@ -351,7 +354,7 @@ class WalletWorker:
         return quotes
 
     async def scan_once(self, settings: Settings) -> List[Opportunity]:
-        return await self._scan(settings)
+        return await self._scan(settings, time.monotonic())
 
     def _gas_used_estimate(self, buy_dex: str, sell_dex: str) -> int:
         total = 0
