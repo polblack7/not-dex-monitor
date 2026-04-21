@@ -1,28 +1,13 @@
 [
   {
     "inputs": [
-      {"internalType": "address", "name": "tokenIn", "type": "address"},
-      {"internalType": "address", "name": "tokenOut", "type": "address"},
-      {"internalType": "uint24", "name": "fee", "type": "uint24"},
-      {"internalType": "uint256", "name": "amountIn", "type": "uint256"},
-      {"internalType": "uint160", "name": "sqrtPriceLimitX96", "type": "uint160"}
-    ],
-    "name": "quoteExactInputSingle",
-    "outputs": [
-      {"internalType": "uint256", "name": "amountOut", "type": "uint256"}
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
       {
         "components": [
-          {"internalType": "address", "name": "tokenIn", "type": "address"},
-          {"internalType": "address", "name": "tokenOut", "type": "address"},
-          {"internalType": "uint24", "name": "fee", "type": "uint24"},
-          {"internalType": "uint256", "name": "amountIn", "type": "uint256"},
-          {"internalType": "uint160", "name": "sqrtPriceLimitX96", "type": "uint160"}
+          {"internalType": "address",  "name": "tokenIn",           "type": "address"},
+          {"internalType": "address",  "name": "tokenOut",          "type": "address"},
+          {"internalType": "uint256",  "name": "amountIn",          "type": "uint256"},
+          {"internalType": "uint24",   "name": "feeUnits",          "type": "uint24"},
+          {"internalType": "uint160",  "name": "limitSqrtP",        "type": "uint160"}
         ],
         "internalType": "struct IQuoterV2.QuoteExactInputSingleParams",
         "name": "params",
@@ -31,9 +16,20 @@
     ],
     "name": "quoteExactInputSingle",
     "outputs": [
-      {"internalType": "uint256", "name": "amountOut", "type": "uint256"}
+      {
+        "components": [
+          {"internalType": "uint256", "name": "usedAmount",               "type": "uint256"},
+          {"internalType": "uint256", "name": "returnedAmount",           "type": "uint256"},
+          {"internalType": "uint160", "name": "afterSqrtP",               "type": "uint160"},
+          {"internalType": "uint32",  "name": "initializedTicksCrossed",  "type": "uint32"},
+          {"internalType": "uint256", "name": "gasEstimate",              "type": "uint256"}
+        ],
+        "internalType": "struct IQuoterV2.QuoteOutput",
+        "name": "output",
+        "type": "tuple"
+      }
     ],
-    "stateMutability": "view",
+    "stateMutability": "nonpayable",
     "type": "function"
   }
 ]

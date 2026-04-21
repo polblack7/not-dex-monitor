@@ -51,7 +51,7 @@ class UniswapV3Adapter(BaseDexAdapter):
         best_gas: Optional[int] = None
 
         for fee in self._fee_tiers:
-            params = (token_in_addr, token_out_addr, fee, amount_in_wei, 0)
+            params = (token_in_addr, token_out_addr, amount_in_wei, fee, 0)
             try:
                 result = self.quoter.functions.quoteExactInputSingle(params).call({"gas": 1_000_000})
             except Exception as exc:  # noqa: BLE001

@@ -72,20 +72,14 @@ class KyberSwapElasticAdapter(BaseDexAdapter):
         )
 
     def _call_quoter(self, token_in: str, token_out: str, fee: int, amount_in_wei: int):
-        try:
-            return self.quoter.functions.quoteExactInputSingle(
-                token_in,
-                token_out,
-                fee,
-                amount_in_wei,
-                0,
-            ).call()
-        except Exception:  # noqa: BLE001
-            params = (token_in, token_out, fee, amount_in_wei, 0)
-            return self.quoter.functions.quoteExactInputSingle(params).call()
+        # Selector c6a5026a: (tokenIn, tokenOut, amountIn, feeUnits, limitSqrtP)
+        params = (token_in, token_out, amount_in_wei, fee, 0)
+        return self.quoter.functions.quoteExactInputSingle(params).call()
 
 
 def _parse_quoter_amount(result: object) -> int:
+    # QuoteOutput: (usedAmount, returnedAmount, afterSqrtP, initializedTicksCrossed, gasEstimate)
+    # result[0] = usedAmount (input echoed), result[1] = returnedAmount (actual output)
     if isinstance(result, (list, tuple)):
-        return int(result[0])
+        return int(result[1])
     return int(result)

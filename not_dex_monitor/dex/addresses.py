@@ -101,9 +101,9 @@ MAINNET_ADDRESSES = DexAddresses(
         offchain_oracle="0x07D91f5fb9Bf7798734C3f606dB065549F6893bb",
     ),
     kyberswap_elastic=KyberSwapElasticAddresses(
-        quoter="0x9AAb3f75489902f3a48495025729a0AF77d4b11e",
-        router="0x1c87257f5e8609940bc751a07bb085bb7f8cdbe6",
-        factory="0xC7a590291e07B9fe9E64b86c58fD8fC764308C4E",
+        quoter="0x0D125c15D54cA1F8a813C74A81aEe34ebB508C1f",
+        router="0xF9c2b5746c946EF883ab2660BbbB1f10A5bdeAb4",
+        factory="0x5F1dddbf348aC2fbe22a163e30F99F9ECE3DD50a",
     ),
     dodo_v2=DodoV2Addresses(
         proxy="0xa356867fDCEa8e71AEaF87805808803806231FdC",
