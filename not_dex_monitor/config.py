@@ -19,6 +19,7 @@ class Config:
     http_timeout_sec: int
     http_max_retries: int
     http_backoff_base_sec: float
+    wallet_encryption_key: str
 
     @classmethod
     def from_env(
@@ -63,6 +64,7 @@ class Config:
             http_timeout_sec=get_int("HTTP_TIMEOUT_SEC", 15),
             http_max_retries=get_int("HTTP_MAX_RETRIES", 3),
             http_backoff_base_sec=float(get_env("HTTP_BACKOFF_BASE_SEC", "0.5") or "0.5"),
+            wallet_encryption_key=get_env("WALLET_ENCRYPTION_KEY", "") or "",
         )
         cfg._validate(require_backend=require_backend)
         return cfg

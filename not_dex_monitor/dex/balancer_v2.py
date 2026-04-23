@@ -32,23 +32,29 @@ class BalancerV2Adapter(BaseDexAdapter):
 
         token_in_addr = self.w3.to_checksum_address(token_in.address)
         token_out_addr = self.w3.to_checksum_address(token_out.address)
-        assets = [token_in_addr, token_out_addr]
+
+        # Balancer V2 requires assets sorted in ascending address order.
+        if token_in_addr.lower() < token_out_addr.lower():
+            assets = [token_in_addr, token_out_addr]
+            asset_in_idx, asset_out_idx = 0, 1
+        else:
+            assets = [token_out_addr, token_in_addr]
+            asset_in_idx, asset_out_idx = 1, 0
+
         funds = (ZERO_ADDRESS, False, ZERO_ADDRESS, False)
 
         best_amount: Optional[int] = None
         best_pool: Optional[str] = None
         for pool_address in pool_addresses:
-            pool_id = self._get_pool_id(pool_address)
-            swaps = [(pool_id, 0, 1, amount_in_wei, b"")]
             try:
-                deltas = self.vault.functions.queryBatchSwap(0, swaps, assets, funds).call()
+                pool_id = self._get_pool_id(pool_address)
             except Exception:  # noqa: BLE001
                 continue
-            if not deltas or len(deltas) < 2:
-                continue
-            out_delta = int(deltas[1])
-            amount_out = -out_delta if out_delta < 0 else 0
-            if amount_out <= 0:
+
+            amount_out = self._query_batch_swap(
+                pool_id, asset_in_idx, asset_out_idx, amount_in_wei, assets, funds,
+            )
+            if amount_out is None or amount_out <= 0:
                 continue
             if best_amount is None or amount_out > best_amount:
                 best_amount = amount_out
@@ -63,11 +69,39 @@ class BalancerV2Adapter(BaseDexAdapter):
             route=[token_in.symbol, token_out.symbol],
             gas_estimate=self.gas_estimate,
             error=None,
-            diagnostics={
-                "vault": self.vault_address,
-                "pool": best_pool,
-            },
+            diagnostics={"vault": self.vault_address, "pool": best_pool},
         )
+
+    def _query_batch_swap(
+        self,
+        pool_id: object,
+        asset_in_idx: int,
+        asset_out_idx: int,
+        amount_in_wei: int,
+        assets: list,
+        funds: tuple,
+    ) -> Optional[int]:
+        # Try progressively smaller amounts if pool rejects due to MAX_IN_RATIO (BAL#304).
+        # Scale the result back up proportionally.
+        for divisor in (1, 10, 100):
+            probe = amount_in_wei // divisor
+            if probe == 0:
+                break
+            swaps = [(pool_id, asset_in_idx, asset_out_idx, probe, b"")]
+            try:
+                deltas = self.vault.functions.queryBatchSwap(0, swaps, assets, funds).call()
+            except Exception as exc:  # noqa: BLE001
+                if "BAL#304" in str(exc):
+                    continue
+                return None
+            if not deltas or len(deltas) < 2:
+                return None
+            out_delta = int(deltas[asset_out_idx])
+            amount_out = -out_delta if out_delta < 0 else 0
+            if amount_out <= 0:
+                return None
+            return amount_out * divisor
+        return None
 
     def _pool_addresses_for_pair(self, symbol_in: str, symbol_out: str) -> List[str]:
         key = (symbol_in.upper(), symbol_out.upper())

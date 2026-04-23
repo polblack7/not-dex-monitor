@@ -8,6 +8,9 @@ from .abi import load_abi
 from .addresses import MAINNET_ADDRESSES
 from .base import BaseDexAdapter, QuoteResult
 from ..tokens import Token, TokenPair
+from ..util.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 DEFAULT_FEE_TIERS = (500, 3000, 10000)
@@ -48,10 +51,11 @@ class UniswapV3Adapter(BaseDexAdapter):
         best_gas: Optional[int] = None
 
         for fee in self._fee_tiers:
-            params = (token_in_addr, token_out_addr, fee, amount_in_wei, 0)
+            params = (token_in_addr, token_out_addr, amount_in_wei, fee, 0)
             try:
-                result = self.quoter.functions.quoteExactInputSingle(params).call()
-            except Exception:  # noqa: BLE001
+                result = self.quoter.functions.quoteExactInputSingle(params).call({"gas": 1_000_000})
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("V3 quoteExactInputSingle fee=%d failed: %s", fee, exc)
                 continue
             amount_out, gas_estimate = _parse_quoter_result(result)
             if amount_out <= 0:

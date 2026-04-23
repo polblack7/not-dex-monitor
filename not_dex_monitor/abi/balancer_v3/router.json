@@ -1,0 +1,18 @@
+[
+  {
+    "inputs": [
+      {"internalType": "address", "name": "pool", "type": "address"},
+      {"internalType": "address", "name": "tokenIn", "type": "address"},
+      {"internalType": "address", "name": "tokenOut", "type": "address"},
+      {"internalType": "uint256", "name": "exactAmountIn", "type": "uint256"},
+      {"internalType": "address", "name": "sender", "type": "address"},
+      {"internalType": "bytes", "name": "userData", "type": "bytes"}
+    ],
+    "name": "querySwapSingleTokenExactIn",
+    "outputs": [
+      {"internalType": "uint256", "name": "amountCalculated", "type": "uint256"}
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+]
