@@ -55,7 +55,11 @@ class UniswapV3Adapter(BaseDexAdapter):
             try:
                 result = self.quoter.functions.quoteExactInputSingle(params).call({"gas": 1_000_000})
             except Exception as exc:  # noqa: BLE001
-                logger.warning("V3 quoteExactInputSingle fee=%d failed: %s", fee, exc)
+                # Reverts here are routine: Uniswap V3 QuoterV2 throws
+                # "Unexpected error" when the requested fee tier has no
+                # liquidity in the active tick. The outer loop falls through
+                # to the next tier, so this is informational, not a failure.
+                logger.debug("V3 quoteExactInputSingle fee=%d failed: %s", fee, exc)
                 continue
             amount_out, gas_estimate = _parse_quoter_result(result)
             if amount_out <= 0:
