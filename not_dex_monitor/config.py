@@ -56,8 +56,11 @@ class Config:
             backend_base_url=backend_url,
             internal_api_key=get_env("INTERNAL_API_KEY", "") or "",
             access_token_master=get_env("ACCESS_TOKEN_MASTER"),
-            eth_rpc_url=get_env("ETH_RPC_URL", "") or "",
-            chain_id=get_int("CHAIN_ID", 1),
+            # Tenderly Virtual TestNet preferred when set -- lets us run the
+            # whole stack against the test environment without touching mainnet
+            # env values. Falls back to ETH_RPC_URL otherwise.
+            eth_rpc_url=get_env("TENDERLY_RPC_URL") or get_env("ETH_RPC_URL", "") or "",
+            chain_id=get_int("TENDERLY_CHAIN_ID", get_int("CHAIN_ID", 1)),
             active_users_poll_sec=poll_sec,
             jwt_cache_ttl_sec=get_int("JWT_CACHE_TTL_SEC", 600),
             emit_ops_on_opportunity=get_bool("EMIT_OPS_ON_OPPORTUNITY", True),
