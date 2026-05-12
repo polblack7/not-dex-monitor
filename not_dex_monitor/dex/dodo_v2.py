@@ -17,7 +17,26 @@ class DodoV2Adapter(BaseDexAdapter):
         self.pool_abi = load_abi("dodo_v2", "pool")
 
     def _supports_pair(self, pair: TokenPair) -> bool:
-        return bool(self._pool_addresses_for_pair(pair.base.symbol, pair.quote.symbol))
+        # Static map is the candidate set, but DODO pools are one-direction
+        # (base/quote roles are fixed on-chain). Verify at least one pool
+        # actually exposes the requested tokens before quoting.
+        pool_addresses = self._pool_addresses_for_pair(pair.base.symbol, pair.quote.symbol)
+        if not pool_addresses:
+            return False
+        wanted = {pair.base.address.lower(), pair.quote.address.lower()}
+        for pool_address in pool_addresses:
+            try:
+                pool = self.w3.eth.contract(
+                    address=self.w3.to_checksum_address(pool_address),
+                    abi=self.pool_abi,
+                )
+                base_token = str(pool.functions.baseToken().call()).lower()
+                quote_token = str(pool.functions.quoteToken().call()).lower()
+            except Exception:  # noqa: BLE001
+                continue
+            if {base_token, quote_token} == wanted:
+                return True
+        return False
 
     def _quote_exact_in(self, token_in: Token, token_out: Token, amount_in_wei: int) -> QuoteResult:
         pool_addresses = self._pool_addresses_for_pair(token_in.symbol, token_out.symbol)

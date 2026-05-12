@@ -13,7 +13,11 @@ class ZeroExAdapter(BaseDexAdapter):
         self.exchange_proxy_address = MAINNET_ADDRESSES.zeroex.exchange_proxy
 
     def _supports_pair(self, pair: TokenPair) -> bool:
-        return True
+        # 0x ExchangeProxy has no on-chain price-query function — pricing requires
+        # the off-chain RFQ API. Until that integration exists, advertise the
+        # adapter as unsupported so the worker skips it silently instead of
+        # logging "forward quote failed" for every pair on every scan.
+        return False
 
     def _quote_exact_in(self, token_in: Token, token_out: Token, amount_in_wei: int) -> QuoteResult:
         return self._error_result(

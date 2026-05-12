@@ -157,14 +157,27 @@ DEX_ROUTER_CONFIG: Dict[str, dict] = {
 
 
 BALANCER_POOL_ADDRESSES: Dict[Tuple[str, str], List[str]] = {
+    # 80WETH-20USDC weighted pool
     ("WETH", "USDC"): [
         "0x96646936b91d6b9d7d0c47c496afbf3d6ec7b6f8",
     ],
-    ("WETH", "USDT"): [
-        "0x3e5fa9518ea95c3e533eb377c001702a9aacaa32",
-    ],
+    # 50WBTC-50WETH weighted pool
     ("WBTC", "WETH"): [
         "0xa6f548df93de924d73be7d25dc02554c6bd66db5",
+    ],
+    # 60WETH-40DAI weighted pool
+    ("WETH", "DAI"): [
+        "0x0b09deA16768f0799065C475bE02919503cB2a35",
+    ],
+    # staBAL3 — DAI/USDC/USDT stable pool covers all three stable cross-rates.
+    ("USDC", "USDT"): [
+        "0x06df3b2bbb68adc8b0e302443692037ed9f91b42",
+    ],
+    ("USDC", "DAI"): [
+        "0x06df3b2bbb68adc8b0e302443692037ed9f91b42",
+    ],
+    ("USDT", "DAI"): [
+        "0x06df3b2bbb68adc8b0e302443692037ed9f91b42",
     ],
 }
 

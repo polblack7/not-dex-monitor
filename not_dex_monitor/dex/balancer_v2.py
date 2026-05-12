@@ -23,7 +23,34 @@ class BalancerV2Adapter(BaseDexAdapter):
         self._pool_ids: Dict[str, object] = {}
 
     def _supports_pair(self, pair: TokenPair) -> bool:
-        return bool(self._pool_addresses_for_pair(pair.base.symbol, pair.quote.symbol))
+        # Static map entry is necessary but not sufficient — verify that at
+        # least one configured pool resolves a valid poolId AND returns a
+        # non-zero quote for a tiny probe amount. Result is cached by the
+        # BaseDexAdapter, so this only runs once per pair.
+        pool_addresses = self._pool_addresses_for_pair(pair.base.symbol, pair.quote.symbol)
+        if not pool_addresses:
+            return False
+        probe_amount = max(10 ** (pair.base.decimals - 2), 1)
+        token_in_addr = self.w3.to_checksum_address(pair.base.address)
+        token_out_addr = self.w3.to_checksum_address(pair.quote.address)
+        if token_in_addr.lower() < token_out_addr.lower():
+            assets = [token_in_addr, token_out_addr]
+            in_idx, out_idx = 0, 1
+        else:
+            assets = [token_out_addr, token_in_addr]
+            in_idx, out_idx = 1, 0
+        for pool_address in pool_addresses:
+            try:
+                pool_id = self._get_pool_id(pool_address)
+            except Exception:  # noqa: BLE001
+                continue
+            amount_out = self._query_batch_swap(
+                pool_id, in_idx, out_idx, probe_amount, assets,
+                (ZERO_ADDRESS, False, ZERO_ADDRESS, False),
+            )
+            if amount_out and amount_out > 0:
+                return True
+        return False
 
     def _quote_exact_in(self, token_in: Token, token_out: Token, amount_in_wei: int) -> QuoteResult:
         pool_addresses = self._pool_addresses_for_pair(token_in.symbol, token_out.symbol)

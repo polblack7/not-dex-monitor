@@ -30,7 +30,21 @@ class OneInchAdapter(BaseDexAdapter):
         )
 
     def _supports_pair(self, pair: TokenPair) -> bool:
-        return True
+        # OffchainOracle.getRate returns 0 (or reverts) for tokens it cannot
+        # price. Probe once per pair; the BaseDexAdapter caches the result so
+        # this is a one-time cost.
+        rate = self._probe_rate(pair.base.address, pair.quote.address)
+        return rate is not None and rate > 0
+
+    def _probe_rate(self, token_in_addr: str, token_out_addr: str) -> Optional[int]:
+        token_in = self.w3.to_checksum_address(token_in_addr)
+        token_out = self.w3.to_checksum_address(token_out_addr)
+        for use_wrappers in (False, True):
+            try:
+                return int(self.oracle.functions.getRate(token_in, token_out, use_wrappers).call())
+            except Exception:  # noqa: BLE001
+                continue
+        return None
 
     def _quote_exact_in(self, token_in: Token, token_out: Token, amount_in_wei: int) -> QuoteResult:
         token_in_addr = self.w3.to_checksum_address(token_in.address)
