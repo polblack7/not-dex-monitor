@@ -8,25 +8,25 @@ from ..tokens import Token, TokenPair
 
 
 class ZeroExAdapter(BaseDexAdapter):
-    def __init__(self, w3: Web3) -> None:
-        super().__init__(w3, name="0x", gas_estimate=260_000)
-        self.exchange_proxy_address = MAINNET_ADDRESSES.zeroex.exchange_proxy
+  def __init__(self, w3: Web3) -> None:
+    super().__init__(w3, name="0x", gas_estimate=260_000)
+    self.exchange_proxy_address = MAINNET_ADDRESSES.zeroex.exchange_proxy
 
-    def _supports_pair(self, pair: TokenPair) -> bool:
-        # 0x ExchangeProxy has no on-chain price-query function — pricing requires
-        # the off-chain RFQ API. Until that integration exists, advertise the
-        # adapter as unsupported so the worker skips it silently instead of
-        # logging "forward quote failed" for every pair on every scan.
-        return False
+  def _supports_pair(self, pair: TokenPair) -> bool:
+    # 0x ExchangeProxy has no on-chain price-query function -- pricing requires
+    # the off-chain RFQ API. Until that integration exists, advertise the
+    # adapter as unsupported so the worker skips it silently instead of
+    # logging "forward quote failed" for every pair on every scan.
+    return False
 
-    def _quote_exact_in(self, token_in: Token, token_out: Token, amount_in_wei: int) -> QuoteResult:
-        return self._error_result(
-            token_in,
-            token_out,
-            amount_in_wei,
-            error="unsupported_without_offchain",
-            diagnostics={
-                "exchange_proxy": self.exchange_proxy_address,
-                "reason": "0x pricing requires offchain RFQ or API sampling",
-            },
-        )
+  def _quote_exact_in(self, token_in: Token, token_out: Token, amount_in_wei: int) -> QuoteResult:
+    return self._error_result(
+      token_in,
+      token_out,
+      amount_in_wei,
+      error="unsupported_without_offchain",
+      diagnostics={
+        "exchange_proxy": self.exchange_proxy_address,
+        "reason": "0x pricing requires offchain RFQ or API sampling",
+      },
+    )

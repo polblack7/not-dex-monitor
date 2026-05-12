@@ -276,10 +276,16 @@ class WalletWorker:
             return []
 
         # Filter to supported quoters first (all sync, no network).
+        # Dedupe by canonical name — aliases like "Uniswap" + "Uniswap V2"
+        # both map to the same quoter and would otherwise be called twice.
+        seen_keys: set = set()
         valid_quoters = []
         for dex_name in dex_list:
             canonical = canonical_dex_name(dex_name)
             key = normalize_dex_name(canonical)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
             quoter = self.dex_quoters.get(key)
             if not quoter:
                 await self._log_once(
@@ -340,10 +346,16 @@ class WalletWorker:
         if self._stop_event.is_set():
             return []
 
-        quoters = [
-            self.dex_quoters.get(normalize_dex_name(canonical_dex_name(dex_name)))
-            for dex_name in dex_list
-        ]
+        seen_keys: set = set()
+        quoters = []
+        for dex_name in dex_list:
+            key = normalize_dex_name(canonical_dex_name(dex_name))
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            q = self.dex_quoters.get(key)
+            if q:
+                quoters.append(q)
 
         async def _fetch(quoter) -> Optional[PriceQuote]:
             if self._stop_event.is_set():
