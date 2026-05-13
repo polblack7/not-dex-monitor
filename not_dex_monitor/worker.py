@@ -15,6 +15,7 @@ from .models import Opportunity, PriceQuote, Settings
 from .quote_math import price_from_amounts, to_wei
 from .tokens import Token, default_base_amount, get_token, parse_pair
 from .util.logging import get_logger
+from .util.prices import to_usd
 from .util.time import utcnow_iso
 
 
@@ -458,6 +459,8 @@ class WalletWorker:
             return
 
         if self.config.emit_ops_on_opportunity:
+            base_symbol = parse_pair(opp.pair).base.symbol
+            fees_usd = to_usd(opp.fees_base, base_symbol, self.w3)
             await self.backend.post_event(
                 self.wallet_address,
                 "op",
@@ -466,7 +469,7 @@ class WalletWorker:
                     "pair": opp.pair,
                     "dex": f"{opp.buy_dex}->{opp.sell_dex}",
                     "profit": 0.0,
-                    "fees": opp.fees_base,
+                    "fees": fees_usd if fees_usd is not None else opp.fees_base,
                     "exec_time_ms": exec_time_ms,
                     "status": "fail",
                     "error_message": "EXECUTION_NOT_IMPLEMENTED",
@@ -499,6 +502,14 @@ class WalletWorker:
             settings,
         )
 
+        # Normalise profit/fees to USD before persistence so the dashboard can
+        # aggregate cross-pair stats meaningfully. Arbs on USDC/USDT report
+        # profit in USDC, ETH/USDT in ETH, etc. -- raw values would be summed
+        # as if they were the same unit otherwise.
+        base_symbol = parse_pair(opp.pair).base.symbol
+        profit_usd = to_usd(result.profit, base_symbol, self.w3)
+        fees_usd = to_usd(result.fees, base_symbol, self.w3)
+
         await self.backend.post_event(
             self.wallet_address,
             "op",
@@ -506,8 +517,8 @@ class WalletWorker:
                 "timestamp": utcnow_iso(),
                 "pair": opp.pair,
                 "dex": f"{opp.buy_dex}->{opp.sell_dex}",
-                "profit": result.profit,
-                "fees": result.fees,
+                "profit": profit_usd if profit_usd is not None else result.profit,
+                "fees": fees_usd if fees_usd is not None else result.fees,
                 "exec_time_ms": result.exec_time_ms,
                 "status": "success" if result.success else "fail",
                 "error_message": result.error,
