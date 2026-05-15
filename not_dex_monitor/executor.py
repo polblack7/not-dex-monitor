@@ -10,11 +10,18 @@ from pathlib import Path
 from typing import Optional
 
 from eth_abi import encode as abi_encode
+from eth_utils import keccak
 from web3 import Web3
 
 from .dex import canonical_dex_name, normalize_dex_name
-from .dex.addresses import DEX_ROUTER_CONFIG, MAINNET_ADDRESSES
+from .dex.addresses import (
+    BALANCER_POOL_ADDRESSES,
+    DEX_ROUTER_CONFIG,
+    MAINNET_ADDRESSES,
+    ZERO_ADDRESS,
+)
 from .dex.abi import load_abi
+from .dex.fluid import FLUID_POOLS
 from .models import Opportunity, Settings
 from .tokens import parse_pair, Token
 from .quote_math import to_wei
@@ -24,7 +31,7 @@ from .util.logging import get_logger
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Key derivation (vendored — avoids depending on the backend package)
+# Key derivation (vendored -- avoids depending on the backend package)
 # ---------------------------------------------------------------------------
 
 import base64
@@ -207,6 +214,168 @@ def _get_router_config(dex_name: str) -> Optional[dict]:
     return DEX_ROUTER_CONFIG.get(canonical)
 
 
+# DEX type IDs mirror FlashLoan.sol constants — keep in sync.
+_DEX_TYPE_V2            = 0
+_DEX_TYPE_V3            = 1
+_DEX_TYPE_CURVE_STABLE  = 2
+_DEX_TYPE_CURVE_CRYPTO  = 3
+_DEX_TYPE_BALANCER_V2   = 4
+_DEX_TYPE_FLUID         = 5
+
+# Present in Curve stable pool bytecode; absent in crypto pools.
+_CURVE_STABLE_EXCHANGE_SELECTOR = keccak(text="exchange(int128,int128,uint256,uint256)")[:4]
+
+_DEX_V2_NAMES = {"uniswap v2", "sushiswap", "shibaswap"}
+
+
+@dataclass(frozen=True)
+class LegParams:
+    dex_type: int
+    target: str
+    extra_data: bytes
+
+
+def build_leg_params(
+    w3: Web3,
+    dex_name: str,
+    token_in: Token,
+    token_out: Token,
+) -> Optional[LegParams]:
+    """Return None for DEXes without an on-chain executor path (quoting-only)."""
+    canonical = canonical_dex_name(normalize_dex_name(dex_name))
+
+    if canonical in _DEX_V2_NAMES:
+        cfg = DEX_ROUTER_CONFIG.get(canonical)
+        if not cfg:
+            return None
+        return LegParams(_DEX_TYPE_V2, w3.to_checksum_address(cfg["router"]), b"")
+
+    if canonical == "uniswap v3":
+        cfg = DEX_ROUTER_CONFIG.get(canonical)
+        if not cfg:
+            return None
+        fee = int(cfg.get("fee", 3000))
+        return LegParams(
+            _DEX_TYPE_V3,
+            w3.to_checksum_address(cfg["router"]),
+            abi_encode(["uint24"], [fee]),
+        )
+
+    if canonical == "curve":
+        return _build_curve_leg(w3, token_in, token_out)
+
+    if canonical == "balancer v2":
+        return _build_balancer_v2_leg(w3, token_in, token_out)
+
+    if canonical == "fluid dex":
+        return _build_fluid_leg(token_in, token_out)
+
+    return None
+
+
+def _build_curve_leg(w3: Web3, token_in: Token, token_out: Token) -> Optional[LegParams]:
+    addr_provider = w3.eth.contract(
+        address=w3.to_checksum_address(MAINNET_ADDRESSES.curve.address_provider),
+        abi=load_abi("curve", "address_provider"),
+    )
+    registry_addr: Optional[str] = None
+    for getter in (
+        lambda: addr_provider.functions.get_address(7).call(),
+        lambda: addr_provider.functions.get_address(0).call(),
+        lambda: addr_provider.functions.get_registry().call(),
+    ):
+        try:
+            addr = getter()
+            if addr and addr != ZERO_ADDRESS:
+                registry_addr = addr
+                break
+        except Exception:  # noqa: BLE001
+            continue
+    if not registry_addr:
+        return None
+
+    registry = w3.eth.contract(
+        address=w3.to_checksum_address(registry_addr),
+        abi=load_abi("curve", "registry"),
+    )
+    token_in_addr  = w3.to_checksum_address(token_in.address)
+    token_out_addr = w3.to_checksum_address(token_out.address)
+    try:
+        pool = registry.functions.find_pool_for_coins(token_in_addr, token_out_addr).call()
+    except Exception:  # noqa: BLE001
+        pool = None
+    if not pool or pool == ZERO_ADDRESS:
+        return None
+
+    try:
+        i, j, is_underlying = registry.functions.get_coin_indices(
+            w3.to_checksum_address(pool), token_in_addr, token_out_addr,
+        ).call()
+    except Exception:  # noqa: BLE001
+        return None
+    if bool(is_underlying):
+        # FlashLoan.sol calls plain `exchange`, not `exchange_underlying`.
+        return None
+
+    try:
+        code = bytes(w3.eth.get_code(w3.to_checksum_address(pool)))
+    except Exception:  # noqa: BLE001
+        code = b""
+
+    if _CURVE_STABLE_EXCHANGE_SELECTOR in code:
+        return LegParams(
+            _DEX_TYPE_CURVE_STABLE,
+            w3.to_checksum_address(pool),
+            abi_encode(["int128", "int128"], [int(i), int(j)]),
+        )
+    return LegParams(
+        _DEX_TYPE_CURVE_CRYPTO,
+        w3.to_checksum_address(pool),
+        abi_encode(["uint256", "uint256"], [int(i), int(j)]),
+    )
+
+
+def _build_balancer_v2_leg(w3: Web3, token_in: Token, token_out: Token) -> Optional[LegParams]:
+    key = (token_in.symbol.upper(), token_out.symbol.upper())
+    alt = (key[1], key[0])
+    pool_list = BALANCER_POOL_ADDRESSES.get(key) or BALANCER_POOL_ADDRESSES.get(alt) or []
+    if not pool_list:
+        return None
+    pool_addr = w3.to_checksum_address(pool_list[0])
+
+    pool_id: Optional[bytes] = None
+    for abi_name in ("weighted_pool", "stable_pool"):
+        try:
+            pool = w3.eth.contract(address=pool_addr, abi=load_abi("balancer_v2", abi_name))
+            pool_id = bytes(pool.functions.getPoolId().call())
+            if pool_id:
+                break
+        except Exception:  # noqa: BLE001
+            continue
+    if not pool_id:
+        return None
+
+    return LegParams(
+        _DEX_TYPE_BALANCER_V2,
+        w3.to_checksum_address(MAINNET_ADDRESSES.balancer_v2.vault),
+        abi_encode(["bytes32"], [pool_id]),
+    )
+
+
+def _build_fluid_leg(token_in: Token, token_out: Token) -> Optional[LegParams]:
+    key = tuple(sorted([token_in.symbol.upper(), token_out.symbol.upper()]))
+    pool = FLUID_POOLS.get(key)
+    if not pool:
+        return None
+    # zeroToOne = (token_in is token0); token0 is the smaller address.
+    zero_to_one = token_in.address.lower() < token_out.address.lower()
+    return LegParams(
+        _DEX_TYPE_FLUID,
+        Web3.to_checksum_address(pool),
+        abi_encode(["bool"], [zero_to_one]),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -234,7 +403,7 @@ async def execute_arb(
     # ------------------------------------------------------------------
     if not settings.flash_loan_contract:
         logger.warning(
-            "flash_loan_contract not configured in settings — "
+            "flash_loan_contract not configured in settings -- "
             "falling back to legacy two-swap flow for %s",
             opp.pair,
         )
@@ -282,48 +451,39 @@ async def _execute_flash_loan(
 ) -> dict:
     """Build and broadcast a single requestFlashLoan transaction."""
 
-    # 1. Resolve tokens from pair string
     pair = parse_pair(opp.pair)
-    base_token: Token = pair.base   # asset to borrow (tokenIn)
-    quote_token: Token = pair.quote  # intermediate token (tokenOut)
+    base_token: Token = pair.base
+    quote_token: Token = pair.quote
 
-    # 2. Determine flash loan amount
     if opp.amount_in_wei > 0:
         amount_in_wei = opp.amount_in_wei
     else:
         amount_in_wei = to_wei(Decimal(str(settings.loan_limit)), base_token.decimals)
 
-    # 3. Resolve DEX router configs
-    buy_cfg = _get_router_config(opp.buy_dex)
-    sell_cfg = _get_router_config(opp.sell_dex)
-    if not buy_cfg:
-        return {"success": False, "error": f"No router config for buy DEX: {opp.buy_dex}"}
-    if not sell_cfg:
-        return {"success": False, "error": f"No router config for sell DEX: {opp.sell_dex}"}
+    buy_leg = build_leg_params(w3, opp.buy_dex, base_token, quote_token)
+    if buy_leg is None:
+        return {"success": False, "error": f"Quoting-only support for {opp.buy_dex} (no on-chain executor)"}
+    sell_leg = build_leg_params(w3, opp.sell_dex, quote_token, base_token)
+    if sell_leg is None:
+        return {"success": False, "error": f"Quoting-only support for {opp.sell_dex} (no on-chain executor)"}
 
-    buy_router  = w3.to_checksum_address(buy_cfg["router"])
-    sell_router = w3.to_checksum_address(sell_cfg["router"])
-    buy_dex_type  = buy_cfg["dex_type"]
-    sell_dex_type = sell_cfg["dex_type"]
-    buy_fee   = buy_cfg["fee"]
-    sell_fee  = sell_cfg["fee"]
-
-    # 4. Compute minProfit in wei
     min_profit_wei = int(amount_in_wei * settings.min_profit_pct / 100)
-
-    # 5. ABI-encode params blob
     token_out_addr = w3.to_checksum_address(quote_token.address)
     params = abi_encode(
-        ["address", "uint8", "address", "uint24", "uint8", "address", "uint24", "uint256"],
+        [
+            "address",
+            "(uint8,address,bytes)",
+            "(uint8,address,bytes)",
+            "uint256",
+        ],
         [
             token_out_addr,
-            buy_dex_type,  buy_router,  buy_fee,
-            sell_dex_type, sell_router, sell_fee,
+            (buy_leg.dex_type,  buy_leg.target,  buy_leg.extra_data),
+            (sell_leg.dex_type, sell_leg.target, sell_leg.extra_data),
             min_profit_wei,
         ],
     )
 
-    # 6. Load FlashLoan contract
     abi = _load_flashloan_abi(settings.flash_loan_contract_abi_path)
     contract_addr = w3.to_checksum_address(settings.flash_loan_contract)
     contract = w3.eth.contract(address=contract_addr, abi=abi)
@@ -337,7 +497,6 @@ async def _execute_flash_loan(
     bumped_gas_price = int(gas_price * 1.1)
     nonce = await asyncio.to_thread(lambda: w3.eth.get_transaction_count(sender))
 
-    # 7. Estimate gas with 20 % buffer
     try:
         gas_est = await asyncio.to_thread(
             contract.functions.requestFlashLoan(asset_addr, amount_in_wei, params).estimate_gas,
@@ -345,9 +504,9 @@ async def _execute_flash_loan(
         )
         gas_limit = int(gas_est * 1.2)
     except Exception:
-        gas_limit = 500_000  # conservative fallback
+        # Worst-case path (Curve crypto + Balancer V2) needs ~730k; round up to 800k.
+        gas_limit = 800_000
 
-    # 8. Build transaction
     tx = contract.functions.requestFlashLoan(asset_addr, amount_in_wei, params).build_transaction(
         {
             "from":     sender,
@@ -417,15 +576,18 @@ async def _execute_legacy(
     settings: Settings,
     start: float,
 ) -> TxResult:
+    # Legacy path only supports DEXes with a simple router (V2 family + V3).
+    # Curve / Balancer V2 / Fluid require the flash-loan contract.
     buy_cfg  = _get_router_config(opp.buy_dex)
     sell_cfg = _get_router_config(opp.sell_dex)
     if not buy_cfg or not sell_cfg:
+        unsupported = opp.buy_dex if not buy_cfg else opp.sell_dex
         return TxResult(
             success=False,
             tx_hash=None,
             profit=0.0,
             fees=0.0,
-            error=f"Execution not supported for {opp.buy_dex}->{opp.sell_dex} (no router config)",
+            error=f"Quoting-only support for {unsupported} (no on-chain executor without flash-loan contract)",
             exec_time_ms=int((time.monotonic() - start) * 1000),
         )
 
@@ -484,7 +646,7 @@ async def _execute_swap_pair(
     buy_cfg: dict,
     sell_cfg: dict,
 ) -> dict:
-    """Execute buy (base→quote) on buy_router then sell (quote→base) on sell_router."""
+    """Execute buy (base->quote) on buy_router then sell (quote->base) on sell_router."""
     chain_id  = await asyncio.to_thread(lambda: w3.eth.chain_id)
     gas_price = await asyncio.to_thread(lambda: w3.eth.gas_price)
 

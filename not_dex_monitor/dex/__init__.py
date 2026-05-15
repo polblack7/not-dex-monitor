@@ -9,6 +9,7 @@ from .balancer_v3 import BalancerV3Adapter
 from .base import BaseDexAdapter
 from .curve import CurveAdapter
 from .dodo_v2 import DodoV2Adapter
+from .fluid import FluidDexAdapter
 from .kyberswap_elastic import KyberSwapElasticAdapter
 from .oneinch import OneInchAdapter
 from .shibaswap import ShibaSwapAdapter
@@ -43,6 +44,8 @@ _DEX_ALIASES = {
     "kyberswap elastic": "kyberswap elastic",
     "dodo": "dodo v2",
     "dodo v2": "dodo v2",
+    "fluid": "fluid dex",
+    "fluid dex": "fluid dex",
 }
 
 
@@ -64,5 +67,6 @@ def create_quoters(w3: Web3) -> Dict[str, BaseDexAdapter]:
         "1inch": OneInchAdapter(w3),
         "kyberswap elastic": KyberSwapElasticAdapter(w3),
         "dodo v2": DodoV2Adapter(w3),
+        "fluid dex": FluidDexAdapter(w3),
     }
     return {normalize_dex_name(name): adapter for name, adapter in adapters.items()}

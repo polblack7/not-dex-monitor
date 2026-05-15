@@ -361,4 +361,4 @@ class TestExecuteArbLegacyFallback:
 
         assert result.success is False
         assert result.tx_hash is None
-        assert "no router config" in (result.error or "")
+        assert "Quoting-only support" in (result.error or "")
